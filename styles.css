@@ -1,0 +1,111 @@
+*:not(html) {
+    max-width: 500px;
+    overflow-x: hidden;
+    font-family: monospace;
+}
+html {
+    background-color: #011;
+    background: radial-gradient(
+            105.68% 45.69% at 92.95% 50%,
+            #001 0%,
+            #011 100%
+        ),
+        radial-gradient(
+            103.18% 103.18% at 90.11% 102.39%,
+            #002 0%,
+            #022 100%
+        ),
+        radial-gradient(
+            90.45% 90.45% at 87.84% 9.55%,
+            #011 0%,
+            #022 100%
+        ),
+        linear-gradient(
+            135.66deg,
+            #011 14.89%,
+            #022 74.33%
+        );
+    background-size: cover;
+}
+body, html {
+    padding: 1rem;
+    margin: 0;
+    min-height: calc(100% - 2rem);
+}
+body {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    margin-inline: auto;
+}
+input {
+    width: 60%;
+    border: #077 2px solid;
+    background: #011;
+    color: #077;
+    padding: .5rem;
+    border-radius: 0;
+}
+button {
+    border: #077 2px solid;
+    background: #011;
+    color: #077;
+    padding: .5rem;
+    border-radius: 0;
+    cursor: pointer;
+    margin: 5px;
+}
+h1, h2, h3, p {
+    color: #077
+}
+p {
+    margin-bottom: 0;
+}
+a {
+    color: inherit;
+    text-decoration: none;
+}
+button:hover {
+    background-color: #022;
+}
+#connectBtns {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+}
+#connectButton:hover {
+    border-color: #00aa22;
+    color: #00aa22;
+}
+#ko-fiButton:hover {
+    border-color: #777;
+    color: #777;
+}
+#discordButton:hover {
+    border-color: #5865F2;
+    color: #5865F2;
+}
+#showButton:hover {
+    border-color: #ccc;
+    color: #ccc;
+}
+*::-webkit-scrollbar {
+    display: none;
+}
+footer {
+    width: 100%;
+    text-align: center;
+}
+#globalOutput {
+    border: 1px solid #077;
+    min-height: 1rem;
+    padding: 1rem;
+    color: #077;
+}
+#globalLog {
+    border: 1px solid #077;
+    min-height: 1rem;
+    padding: 1rem;
+    color: #077;
+    max-height: 5rem;
+    overflow-y: scroll;
+}
