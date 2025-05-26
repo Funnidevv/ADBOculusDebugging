@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Web ADB Menu - Static Demo</title>
+  <style>
+    /* Dark theme, simple terminal style */
+    body {
+      margin: 0;
+      background: #121212;
+      color: #eee;
+      font-family: monospace, monospace;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      background: #1f1f1f;
+      padding: 1rem;
+      text-align: center;
+      font-weight: bold;
+      font-size: 1.5rem;
+      letter-spacing: 1px;
+      user-select: none;
+    }
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 1rem;
+      max-width: 900px;
+      margin: auto;
+      width: 100%;
+    }
+    #terminal {
+      background: #181818;
+      border-radius: 5px;
+      padding: 1rem;
+      flex: 1;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      font-size: 0.9rem;
+      box-shadow: inset 0 0 5px #222;
+    }
+    #inputArea {
+      margin-top: 1rem;
+      display: flex;
+    }
+    #cmdInput {
+      flex: 1;
+      background: #222;
+      border: none;
+      color: #eee;
+      padding: 0.6rem 1rem;
+      font-family: monospace;
+      font-size: 1rem;
+      border-radius: 4px 0 0 4px;
+      outline: none;
+    }
+    #runBtn {
+      background: #4caf50;
+      border: none;
+      color: white;
+      padding: 0 1rem;
+      font-size: 1rem;
+      cursor: pointer;
+      border-radius: 0 4px 4px 0;
+      transition: background 0.3s;
+    }
+    #runBtn:hover {
+      background: #45a049;
+    }
+    #buttons {
+      margin-top: 1rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+    }
+    button.cmdBtn {
+      background: #333;
+      border: none;
+      padding: 0.5rem 1rem;
+      color: #eee;
+      font-family: monospace;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background 0.3s;
+    }
+    button.cmdBtn:hover {
+      background: #555;
+    }
+    footer {
+      text-align: center;
+      padding: 0.5rem;
+      font-size: 0.8rem;
+      color: #666;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+  <header>Web ADB Menu - Static Demo</header>
+  <main>
+    <div id="terminal" tabindex="0"></div>
+    <div id="inputArea">
+      <input type="text" id="cmdInput" placeholder="Enter ADB command here..." autocomplete="off" />
+      <button id="runBtn">Run</button>
+    </div>
+    <div id="buttons">
+      <button class="cmdBtn" data-cmd="adb devices">List Devices</button>
+      <button class="cmdBtn" data-cmd="adb reboot">Reboot Device</button>
+      <button class="cmdBtn" data-cmd="adb install app.apk">Install APK</button>
+      <button class="cmdBtn" data-cmd="adb shell">Open Shell</button>
+      <button class="cmdBtn" data-cmd="adb pull /sdcard/file.txt">Pull File</button>
+      <button class="cmdBtn" data-cmd="adb push file.txt /sdcard/">Push File</button>
+      <button class="cmdBtn" data-cmd="adb logcat">Show Logcat</button>
+      <button class="cmdBtn" data-cmd="clear">Clear Terminal</button>
+    </div>
+  </main>
+  <footer>Static simulation only - no real ADB access</footer>
+
+  <script>
+    const terminal = document.getElementById('terminal');
+    const input = document.getElementById('cmdInput');
+    const runBtn = document.getElementById('runBtn');
+    const buttons = document.querySelectorAll('button.cmdBtn');
+
+    // Simulated responses for some commands
+    const responses = {
+      'adb devices': `List of devices attached
+emulator-5554	device
+ABCDEF123456	device
+`,
+      'adb reboot': 'Rebooting device...\nDone.',
+      'adb install app.apk': 'Performing Streamed Install\nSuccess',
+      'adb shell': 'Opening remote shell...\nYou can type shell commands now (simulation).',
+      'adb pull /sdcard/file.txt': 'Pulling /sdcard/file.txt to local folder...\nSuccess',
+      'adb push file.txt /sdcard/': 'Pushing file.txt to /sdcard/...\nSuccess',
+      'adb logcat': `--------- beginning of main
+04-26 10:12:34.567 1234 1234 D/ExampleApp: Logcat example message
+04-26 10:12:35.789 1234 1234 I/ExampleApp: Info message
+04-26 10:12:36.012 1234 1234 E/ExampleApp: Error message
+`,
+      'clear': ''
+    };
+
+    function appendToTerminal(text) {
+      terminal.textContent += text + '\n';
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function runCommand(cmd) {
+      cmd = cmd.trim();
+      if (!cmd) return;
+
+      if (cmd === 'clear') {
+        terminal.textContent = '';
+        return;
+      }
+
+      appendToTerminal(`> ${cmd}`);
+
+      // Show simulated response or fallback message
+      if (responses[cmd]) {
+        appendToTerminal(responses[cmd]);
+      } else if (cmd.startsWith('adb shell')) {
+        appendToTerminal('Simulated shell mode: (type commands after "adb shell")');
+      } else {
+        appendToTerminal(`Error: Command "${cmd}" not recognized or not supported in this demo.`);
+      }
+    }
+
+    runBtn.addEventListener('click', () => {
+      runCommand(input.value);
+      input.value = '';
+      input.focus();
+    });
+
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        runCommand(input.value);
+        input.value = '';
+      }
+    });
+
+    buttons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const cmd = btn.getAttribute('data-cmd');
+        runCommand(cmd);
+      });
+    });
+
+    // Initial welcome message
+    appendToTerminal('Welcome to Web ADB Menu - Static Demo');
+    appendToTerminal('Type a command or use the buttons below.');
+  </script>
+</body>
+</html>
