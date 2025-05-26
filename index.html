@@ -1,240 +1,123 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
   <title>Web ADB Client</title>
+  <script src="https://unpkg.com/@yume-chan/adb@latest/dist/index.umd.js"></script>
   <style>
     body {
-      font-family: monospace;
       background: #121212;
       color: #eee;
-      margin: 0;
-      display: flex;
-      flex-direction: column;
-      height: 100vh;
-    }
-    header {
-      background: #1f1f1f;
-      padding: 1rem;
-      font-weight: bold;
-      text-align: center;
-    }
-    main {
-      flex: 1;
-      padding: 1rem;
-      max-width: 900px;
-      margin: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-    }
-    #terminal {
-      background: #222;
-      flex: 1;
-      padding: 1rem;
-      overflow-y: auto;
-      border-radius: 6px;
-      white-space: pre-wrap;
-      box-shadow: inset 0 0 10px #000;
-    }
-    #commandInput {
-      width: 100%;
       font-family: monospace;
-      font-size: 1rem;
-      padding: 0.5rem;
-      border-radius: 4px;
-      border: none;
-      outline: none;
-      background: #333;
-      color: #eee;
-    }
-    #buttons {
       display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin-top: 0.5rem;
-      justify-content: center;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem;
     }
+
     button {
       background: #444;
       border: none;
       color: #eee;
-      padding: 0.5rem 1rem;
-      cursor: pointer;
+      padding: 0.6rem 1.2rem;
+      margin: 0.5rem;
       border-radius: 4px;
-      font-family: monospace;
-      font-size: 1rem;
-      transition: background 0.3s;
+      cursor: pointer;
     }
+
     button:hover {
       background: #666;
     }
-    footer {
-      text-align: center;
-      padding: 0.5rem;
-      font-size: 0.8rem;
-      color: #666;
-      user-select: none;
-    }
-    #serverAddress {
-      margin-bottom: 0.5rem;
-      padding: 0.5rem;
-      background: #333;
-      border-radius: 4px;
+
+    textarea {
+      background: #222;
       color: #eee;
-      font-family: monospace;
+      border: none;
+      padding: 1rem;
+      width: 90%;
+      max-width: 800px;
+      height: 200px;
+      margin: 1rem 0;
+      resize: vertical;
+    }
+
+    input {
+      background: #333;
+      color: #eee;
+      border: none;
+      padding: 0.5rem;
+      width: 80%;
+      max-width: 600px;
+      margin: 0.5rem 0;
+    }
+
+    .status {
+      margin: 1rem;
+      color: #0f0;
     }
   </style>
 </head>
 <body>
-  <header>Web ADB Client</header>
-  <main>
-    <div id="serverAddress">Backend server: <input type="text" id="serverUrl" value="http://localhost:3000" style="width:250px; background:#222; border:none; color:#eee; font-family: monospace;"/></div>
-    <button id="listDevicesBtn">List Devices</button>
-    <div id="terminal" tabindex="0"></div>
-    <input type="text" id="commandInput" placeholder="Enter adb shell command (e.g. pm list packages)" />
-    <button id="runCommandBtn">Run Shell Command</button>
+  <h1>Web ADB Client (No Backend)</h1>
+  <button id="connectBtn">Connect to Device</button>
+  <div class="status" id="status">Status: Not connected</div>
 
-    <div id="buttons">
-      <button data-cmd="reboot">Reboot Device</button>
-      <button data-cmd="install">Install APK</button>
-      <button data-cmd="pull">Pull File</button>
-      <button data-cmd="push">Push File</button>
-      <button data-cmd="clear">Clear Terminal</button>
-    </div>
-  </main>
-  <footer>Run the backend server locally and connect here.</footer>
+  <input type="text" id="cmdInput" placeholder="Enter shell command (e.g. ls /sdcard)" />
+  <button id="runBtn">Run Command</button>
+
+  <textarea id="output" readonly></textarea>
 
   <script>
-    const terminal = document.getElementById('terminal');
-    const commandInput = document.getElementById('commandInput');
-    const runCommandBtn = document.getElementById('runCommandBtn');
-    const listDevicesBtn = document.getElementById('listDevicesBtn');
-    const buttons = document.querySelectorAll('#buttons button');
-    const serverUrlInput = document.getElementById('serverUrl');
+    const connectBtn = document.getElementById("connectBtn");
+    const runBtn = document.getElementById("runBtn");
+    const cmdInput = document.getElementById("cmdInput");
+    const output = document.getElementById("output");
+    const status = document.getElementById("status");
 
-    function appendLine(text) {
-      terminal.textContent += text + '\n';
-      terminal.scrollTop = terminal.scrollHeight;
-    }
+    let device;
+    let adb;
+    let shellStream;
 
-    async function fetchApi(path, options = {}) {
-      const url = serverUrlInput.value.replace(/\/$/, '') + path;
+    async function connectToDevice() {
       try {
-        const res = await fetch(url, options);
-        return await res.json();
-      } catch (e) {
-        return { success: false, error: e.message };
+        const transport = await AdbWebUsbBackend.requestDevice();
+        adb = await Adb.authenticate(transport);
+        status.textContent = "Status: Connected to " + adb.device.serial;
+        console.log("Connected to", adb.device.serial);
+      } catch (err) {
+        console.error(err);
+        alert("Failed to connect: " + err.message);
       }
     }
 
-    async function listDevices() {
-      appendLine('> adb devices');
-      const res = await fetchApi('/api/devices');
-      if (res.success) {
-        appendLine(res.output);
-      } else {
-        appendLine('Error: ' + res.error);
+    async function runCommand() {
+      if (!adb) {
+        alert("Not connected to any device!");
+        return;
       }
-    }
 
-    async function runShellCommand(cmd) {
-      if (!cmd) return;
-      appendLine('> adb shell ' + cmd);
-      const res = await fetchApi('/api/shell', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ command: cmd }),
-      });
-      if (res.success) {
-        appendLine(res.output);
-      } else {
-        appendLine('Error: ' + res.error);
-      }
-    }
+      const command = cmdInput.value.trim();
+      if (!command) return;
 
-    async function rebootDevice() {
-      appendLine('> adb reboot');
-      const res = await fetchApi('/api/reboot', { method: 'POST' });
-      if (res.success) {
-        appendLine(res.output);
-      } else {
-        appendLine('Error: ' + res.error);
-      }
-    }
+      try {
+        const stream = await adb.subprocess.spawn(command);
+        const reader = stream.readable.getReader();
+        output.value += "> " + command + "\n";
 
-    async function installApk() {
-      const apkPath = prompt('Enter APK path on server machine:');
-      if (!apkPath) return;
-      appendLine(`> adb install ${apkPath}`);
-      const res = await fetchApi('/api/install', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apkPath }),
-      });
-      if (res.success) {
-        appendLine(res.output);
-      } else {
-        appendLine('Error: ' + res.error);
-      }
-    }
-
-    async function pullFile() {
-      const devicePath = prompt('Enter device file path to pull (e.g. /sdcard/file.txt):');
-      const localPath = prompt('Enter local destination path on server:');
-      if (!devicePath || !localPath) return;
-      appendLine(`> adb pull ${devicePath} ${localPath}`);
-      const res = await fetchApi('/api/pull', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ devicePath, localPath }),
-      });
-      if (res.success) {
-        appendLine(res.output);
-      } else {
-        appendLine('Error: ' + res.error);
-      }
-    }
-
-    async function pushFile() {
-      const localPath = prompt('Enter local file path on server:');
-      const devicePath = prompt('Enter destination device path (e.g. /sdcard/):');
-      if (!localPath || !devicePath) return;
-      appendLine(`> adb push ${localPath} ${devicePath}`);
-      const res = await fetchApi('/api/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ localPath, devicePath }),
-      });
-      if (res.success) {
-        appendLine(res.output);
-      } else {
-        appendLine('Error: ' + res.error);
-      }
-    }
-
-    runCommandBtn.onclick = () => {
-      runShellCommand(commandInput.value);
-      commandInput.value = '';
-    };
-
-    listDevicesBtn.onclick = listDevices;
-
-    buttons.forEach(btn => {
-      btn.onclick = () => {
-        switch (btn.dataset.cmd) {
-          case 'reboot': rebootDevice(); break;
-          case 'install': installApk(); break;
-          case 'pull': pullFile(); break;
-          case 'push': pushFile(); break;
-          case 'clear': terminal.textContent = ''; break;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          output.value += new TextDecoder().decode(value);
         }
-      };
-    });
 
-    // Focus terminal div to enable scrolling with keyboard
-    terminal.focus();
+        stream.close();
+      } catch (err) {
+        output.value += "Error: " + err.message + "\n";
+      }
+    }
+
+    connectBtn.onclick = connectToDevice;
+    runBtn.onclick = runCommand;
   </script>
 </body>
 </html>
