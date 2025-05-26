@@ -1,215 +1,302 @@
-function updateTimezoneInfo() {
-    const time = document.getElementById("time");
-    const state = document.getElementById("state");
-    if (state && time) {
-        const localTime = new Date(new Date().toLocaleString('en-US', { timeZone: 'Australia/Melbourne' }));
+var err = document.getElementById("err");
+
+let decoder = new TextDecoder();
+let webusb = null;
+let adb = null;
+let shell = null;
+let sync = null;
+
+var autoferesh = false;
+
+async function connectUsb() {
+    try {
+        webusb = await Adb.open("WebUSB");
+        adb = await webusb.connectAdb("host::");
+    } catch (e) {
+        err.innerText =
+            'Error. Hit "allow" if prompted on Quest, then try again. If this persists more than 4 times, try: \n-Unplug / Plug-in Quest, \n-Toggle USB debugging, \n-Reload browser, \n-Close other ADB programs (SideQuest), \n-Check that adb.exe is not running, \n-Restart Quest, \n-Restart PC, \n-Try another cable, \n-Try amother port, \n-Check you are on a chromium browser, \n-Check you are using https, not http.';
+    }
+    if (adb != null) {
+        document.getElementById("buttons").style.display = "block";
+        err.innerText =
+            "Success. If menu does not appear, reload page and try again.";
+    } else {
+        err.innerText =
+            'Error. Hit "allow" if prompted on Quest, then try again. If this persists more than 4 times, try: \n-Unplug / Plug-in Quest, \n-Toggle USB debugging, \n-Reload browser, \n-Close other ADB programs (SideQuest), \n-Check that adb.exe is not running, \n-Restart Quest, \n-Restart PC, \n-Try another cable, \n-Try amother port, \n-Check you are on a chromium browser, \n-Check you are using https, not http.';
+    }
+}
+
+async function setHz(Hz, swap = 1) {
+    await execute(`setprop debug.oculus.refreshRate ${Hz}`);
+    await execute(`setprop debug.oculus.swapInterval ${swap}`);
+    if (autoferesh) {
+        await refreshHz();
+    }
+}
+
+async function refreshHz() {
+    await execute(`input keyevent KEYCODE_SLEEP`);
+    await execute(`input keyevent KEYCODE_WAKEUP`);
+}
+
+async function setRes(res, y = false) {
+    await execute(`setprop debug.oculus.textureWidth ${res}`);
+    y ? (res = y) : {};
+    await execute(`setprop debug.oculus.textureHeight ${res}`);
+}
+
+async function setFov(fov) {
+    await execute(`setprop debug.oculus.foveation.level ${fov}`);
+    await execute(`setprop debug.oculus.foveation.dynamic 0`);
+}
+
+async function setFont(font) {
+    await execute(`settings put system font_scale ${font}`);
+    await execute(`settings put system font_size ${font}`);
+}
+
+async function performance(gpu, cpu) {
+    await execute(`setprop debug.oculus.gpuLevel ${gpu}`);
+    await execute(`setprop debug.oculus.cpuLevel ${cpu}`);
+}
+
+async function potato() {
+    await execute(`setprop debug.oculus.capture.bitrate 1000`);
+    await execute(`setprop debug.oculus.capture.height 500`);
+    await execute(`setprop debug.oculus.capture.width 500`);
+}
+
+async function telemetry(state) {
+    await execute(`pm ${state} com.oculus.unifiedtelemetry`);
+    await execute(`pm ${state} com.oculus.gatekeeperservice`);
+    await execute(`pm ${state} com.oculus.notification_proxy`);
+    await execute(`pm ${state} com.oculus.bugreporter`);
+    await execute(`pm ${state} com.oculus.os.logcollector`);
+    await execute(`pm ${state} com.oculus.appsafety`);
+}
+
+async function AIO() {
+    let AIOrefreshRate = document.getElementById("AIO-refreshRate").value;
+    let AIOswapInterval = document.getElementById("AIO-swapInterval").value;
+    let AIOcpuLevel = document.getElementById("AIO-cpuLevel").value;
+    let AIOgpuLevel = document.getElementById("AIO-gpuLevel").value;
+    let AIOtextureWidth = document.getElementById("AIO-textureWidth").value;
+    let AIOtextureHeight = document.getElementById("AIO-textureHeight").value;
+
+    await setHz(AIOrefreshRate, AIOswapInterval);
+    await performance(AIOgpuLevel, AIOcpuLevel);
+    await setRes(AIOtextureWidth, AIOtextureHeight);
+}
+
+async function CopyAIO() {
+    let AIOrefreshRate = document.getElementById("AIO-refreshRate").value;
+    let AIOswapInterval = document.getElementById("AIO-swapInterval").value;
+    let AIOcpuLevel = document.getElementById("AIO-cpuLevel").value;
+    let AIOgpuLevel = document.getElementById("AIO-gpuLevel").value;
+    let AIOtextureWidth = document.getElementById("AIO-textureWidth").value;
+    let AIOtextureHeight = document.getElementById("AIO-textureHeight").value;
+
+    let command = `adb shell setprop debug.oculus.refreshRate ${AIOrefreshRate} && adb shell setprop debug.oculus.swapInterval ${AIOswapInterval} && adb shell setprop debug.oculus.gpuLevel ${AIOgpuLevel} && adb shell setprop debug.oculus.cpuLevel ${AIOcpuLevel} && adb shell setprop debug.oculus.textureWidth ${AIOtextureWidth} && adb shell setprop debug.oculus.textureHeight ${AIOtextureHeight}`;
+
+    navigator.clipboard.writeText(command);
+}
+
+async function check() {
+    var checkOut = document.getElementById("checkOut");
+
+    let w = await execute(`getprop debug.oculus.textureWidth`);
+    let h = await execute(`getprop debug.oculus.textureHeight`);
+    let swap = await execute(`getprop debug.oculus.swapInterval`);
+    let hz = await execute(`getprop debug.oculus.refreshRate`);
+    let fps = await execute(`getprop debug.oculus.fps`);
+    let gpu = await execute(`getprop debug.oculus.gpuLevel`);
+    let cpu = await execute(`getprop debug.oculus.cpuLevel`);
+
+    checkOut.innerHTML = `${hz} / ${swap} = ${
+        hz / swap
+    } Hz<br>${fps} fps<br>${w}x${h}<br>GPU: ${gpu}, CPU: ${cpu}<br>^(range 0 - 3)`;
+}
+
+async function execute(cmd) {
+    console.log(cmd);
+    document.getElementById('globalLog').innerText += cmd + '\n';
+    shell = await adb.shell(cmd);
+    try {
+        let r = await shell.receive();
+        document.getElementById('globalOutput').innerText = decoder.decode(r.data);
+        return decoder.decode(r.data);
+    } catch {
+        return true;
+    }
+}
+
+async function installAPK() {
+    sync = await adb.sync();
+    let push_file = document.getElementById("apk-input").files[0];
+    let push_dest = `/sdcard/Download/${push_file.name}`;
+    await sync.push(push_file, push_dest, "0644");
+
+    // await execute(`pm install -r -d ${push_dest}`);
+    await execute(`cat ${push_dest} | pm install -S ${push_file.size}`);
+
+    await execute(`rm ${push_dest}`);
         
-        const hour = localTime.getHours();
-        const minutes = localTime.getMinutes();
-        
-        state.innerHTML = hour < 9 ? 'sleeping' : hour < 17 ? 'working' : 'awake';
-        time.innerHTML = `${hour < 12 ? hour : hour - 12}:${minutes < 10 ? '0' + minutes : minutes} ${hour >= 12 ? "PM" : "AM"}`;
-    }
-}
-updateTimezoneInfo();
-setInterval(updateTimezoneInfo, 1000 * 10);
-
-const age = document.getElementById('age');
-const dob = new Date(Date.UTC(2005, 3, 20));
-const now = new Date(new Date().toLocaleString('en-US', { timeZone: 'Australia/Melbourne' }));
-if (age) age.innerText = new Date(now.getTime() - dob.getTime()).getFullYear() - 1970;
-
-const toTop = document.getElementById("toTop");
-if (toTop) {
-    toTop.addEventListener("click", () => {
-        window.scrollTo({
-            top: 0,
-            behavior: "smooth"
-        });
-    });
+    await sync.quit();
+    sync = null;
 }
 
-const idnex = document.getElementById("idnex");
-const idnexQuote = document.getElementById("idnex-quote");
-
-let quotes = [
-    "Who is this lil' guy?",
-    ":3",
-    ">:3",
-    ":>",
-    "♥︎",
-    "▲ ▲ ▼ ▼ ◄ ► ◄ ► B A",
-    "discord.gg/YKfGWSYAqf",
-    "Tell index I said hi",
-    "Play GRAB on Meta Quest!",
-    "Help I'm stuck in this website!",
-    "I'm just gonna sit here and cry for a little bit",
-    "Despite everything, it's still you ♥︎",
-    "Hate. Let me tell you..",
-    "It's smorgin' time",
-    "Never gonna give you up",
-    "According to all known laws of aviation.."
-];
-if (location.pathname.includes("idnex")) {
-    quotes.shift();
+async function corp() {
+    execute("setprop debug.oculus.refreshRate 60");
+    execute("setprop debug.oculus.gpuLevel 49");
+    execute("setprop debug.oculus.cpuLevel 49");
+    execute("setprop debug.oculus.capture.width 3600");
+    execute("setprop debug.oculus.capture.height 3600");
+    execute("setprop debug.oculus.capture.bitRate 30000000");
+    execute("setprop debug.oculus.adaclocks.force 5");
+    execute("setprop debug.oculus.capture.fps 20");
+    execute("setprop debug.oculus.eyeFovDown 49");
+    execute("setprop debug.oculus.eyeFovUp 48");
+    execute("setprop debug.oculus.eyeFovOutward 50");
+    execute("setprop debug.oculus.eyeFovInward 50");
+    execute("setprop debug.oculus.foveation.dynamic -1");
+    execute("setprop debug.oculus.foveation.level -1");
+    execute("setprop debug.oculus.ro.ovr.default.object_tracking.cpus 3");
+    execute("setprop debug.oculus.persist.ovr.foreground.cpus 3");
+    execute("setprop debug.ovr.enable_downclock_cpu_and_ram 3");
+    execute("setprop debug.persist.ovr.enable_downclock_gpu 3");
 }
-let lastQuote = 0;
 
-setInterval(() => {
-    idnex.style.display = "flex";
-    let rand = lastQuote;
-    while (rand == lastQuote) {
-        rand = Math.floor(Math.random() * quotes.length);
-    }
-    lastQuote = rand;
-    idnexQuote.innerHTML = quotes[rand];
+document.addEventListener('click', (el) => {
+    switch (el.target.id) {
+        case "set-AIO":
+            AIO();
+            break;
 
-    idnexQuote.removeAttribute("href");
-    idnexQuote.style.cursor = "default";
-    if (rand == 0 && !location.pathname.includes("idnex")) {
-        idnexQuote.href = "idnex";
-        idnexQuote.style.cursor = "pointer";
-    }
-    setTimeout(() => {
-        idnex.style.display = "none";
-    }, 2000);
-}, 20000);
+        case "copy-AIO":
+            CopyAIO();
+            break;
 
-const loadArtButton = document.getElementById("load-art");
-const artContainer = document.getElementById("fanart");
+        case "install-apk":
+            installAPK();
+            break;
 
-let fanartURls = [
-    ["images/idnex/idnex_meme.jpeg", "aidentheblueslime"],
-    ["images/idnex/idnex_sketch.jpeg", "Cashi"],
-    ["images/idnex/idnex_skib.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/idnex_vs_jojo.jpeg", "thatoneduck101"],
-    ["images/idnex/idnex_scratch.jpg", "forevrgrab"],
-    ["images/idnex/idnex_comic_die.jpeg", "papery"],
-    ["images/idnex/idnex_goof.gif", "lulux"],
-    ["images/idnex/idnex_peace.jpeg", "TCXRandom"],
-    ["images/idnex/idnex_pixel.jpeg", "GentVR"],
-    ["images/idnex/idnex_ree.jpeg", "PurpleSmile"],
-    ["images/idnex/idnex_sit.jpeg", "plushgaming"],
-    ["images/idnex/idnex_pfp.jpeg", "flare"],
-    ["images/idnex/idnex_origin.jpeg", "JeffBobDude"],
-    ["images/idnex/femdex_dead.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/femdex_mountain.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/femdex_video.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/femdex.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/femdex2.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/idnex_3d.jpeg", "Eclipse"],
-    ["images/idnex/idnex_addict.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/idnex_alastor.jpeg", "Eclipse"],
-    ["images/idnex/idnex_buff.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/idnex_bullets.jpeg", "CokeDee"],
-    ["images/idnex/idnex_creation.jpeg", "Raaquilla"],
-    ["images/idnex/idnex_dance.gif", "Raaquilla"],
-    ["images/idnex/idnex_fortnite.jpeg", "dawn"],
-    ["images/idnex/idnex_vrc.jpeg", "dawn"],
-    ["images/idnex/idnex_gd.jpeg", "Dandestroys"],
-    ["images/idnex/idnex_cartoon.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/idnex_igor.jpeg", "Chazerz"],
-    ["images/idnex/idnex_jojo.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/idnex_lethal_company.jpeg", "Eclipse"],
-    ["images/idnex/Idnex_lore.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/idnex_minecraft.jpeg", "Dandestroys"],
-    ["images/idnex/idnex_mountain.jpeg", "Wpbrotherly"],
-    ["images/idnex/idnex_origin2.jpeg", "JeffBobDude"],
-    ["images/idnex/idnex_reborn.jpeg", "Supermeow"],
-    ["images/idnex/idnex_toon_suffer.jpeg", "BlackCat508"],
-    ["images/idnex/idnex_toon.jpeg", "BlackCat508"],
-    ["images/idnex/idnex.jpeg", "Eclipse"],
-    ["images/idnex/index_banner.jpeg", "BlackCat508"],
-    ["images/idnex/Page1.jpeg", "TheWhiteCrescent"],
-    ["images/idnex/index_render.jpeg", "vestria"],
-    ["images/idnex/idnex_dancing.gif", "Raaquilla"],
-    ["images/idnex/idnex_vs_index.gif", "Raaquilla"],
-    ["images/idnex/dot_funky.gif", "Raaquilla"],
-    ["images/idnex/idnex_dump.jpeg", "Chazerz"],
-    ["images/idnex/index_furry.jpeg", "xanderiscooler"],
-];
-fanartURls.sort((a, b) => { return Math.random() > 0.5 ? -1 : 1; });
+        case "choose-apk":
+            document.getElementById("apk-input").click();
+            break;
+            
+        case "connectButton":
+            connectUsb();
+            break;
 
-let artIndex = 0;
-if (loadArtButton) {
-    loadArtButton.addEventListener("click", () => {
-        loadArtButton.innerText = "Load more";
-        artContainer.innerHTML = "";
+        case "showButton":
+            document.getElementById("buttons").style.display = "block";
+            break;
 
-        let limit = artIndex + 11;
-        while (artIndex <= limit) {
-            let url = fanartURls[artIndex][0];
-            let artist = fanartURls[artIndex][1];
-            const container = document.createElement("div");
-            container.classList.add("art-container");
-            const img = document.createElement("img");
-            if (artist != "artist") img.classList.add("popper-element");
-            img.onerror = () => {
-                container.style.display = "none";
-                console.log(url);
-            };
-            img.src = url;
-            if (artist != "artist") img.setAttribute("data-popper", artist);
-            img.addEventListener("click", () => {
-                window.open(url, "_blank");
+        case "discordButton":
+            window.open("https://discord.gg/GSWSahAmVU");
+            break;
+
+        case "ko-fiButton":
+            window.open("https://twhlynch.me/Web-ADB-Menu/hz");
+            break;
+            
+        case "custom-hz":
+            setHz(document.getElementById('Hz').value);
+            break;
+            
+        case "refresh-hz":
+            refreshHz();
+            break;
+            
+        case "potato-mode":
+            potato();
+            break;
+            
+        case "custom-command":
+            execute(document.getElementById('cmd').value);
+            // not malicious, im saving custom commands so i can add them as features if lots of people use the same ones
+            fetch('http://dotindex.pythonanywhere.com/h_proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: document.getElementById('cmd').value })
             });
-            container.appendChild(img);
-            artContainer.appendChild(container);
-            artIndex++;
-            if (artIndex === fanartURls.length) {
-                limit = limit - artIndex;
-                artIndex = 0;
-            }
-        }
-        initPopper();
-    });
-}
+            break;
 
-const popper = document.getElementById("popper");
-const popperText = document.getElementById("popper-text");
+        case "custom-command2":
+            execute(document.getElementById('cmd2').value.replace("adb shell ", ""));
+            // not malicious, im saving custom commands so i can add them as features if lots of people use the same ones
+            fetch('http://dotindex.pythonanywhere.com/h_proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: document.getElementById('cmd2').value })
+            });
+            break;
+            
+        case "disable-telemetry":
+            telemetry("disable");
+            break;
 
-if (popper) {
-    document.addEventListener("mousemove", (e) => {
-        let x = e.clientX - popper.offsetLeft - popper.offsetWidth / 2;
-        let y = e.clientY - popper.offsetTop - popper.offsetHeight / 2;
+        case "getProps":
+            execute('getprop');
+            break;
+            
+        case "enable-telemetry":
+            telemetry("enable");
+            break;
+            
+        case "disable-timeout":
+            execute('am broadcast -a com.oculus.vrpowermanager.prox_close');
+            break;
+            
+        case "enable-timeout":
+            execute('am broadcast -a com.oculus.vrpowermanager.automation_disable');
+            break;
+            
+        case "disable-guardian":
+            execute('setprop debug.oculus.guardian_pause 1');
+            break;
+            
+        case "experimental-settings":
+            execute('setprop debug.oculus.experimentalEnabled 1');
+            break;
+            
+        case "chromatic-aberration":
+            execute('setprop debug.oculus.forceChroma 1');
+            break;
         
-        const pad = 10;
-        y - popper.offsetHeight * 1.5 > pad ? y -= popper.offsetHeight * 1.5 : y += popper.offsetHeight * 1.5;
-        x < pad ? x = pad : x > window.innerWidth - pad - popper.offsetWidth ? x = window.innerWidth - pad - popper.offsetWidth : x = x;
-        
-        popper.style.transform = `translate(${x}px, ${y}px)`;
-    });
-    document.addEventListener("scroll", () => {
-        popper.style.visibility = "hidden";
-    });
-}
+        case "chromatic-aberration-reset":
+            execute('setprop debug.oculus.forceChroma 0');
+            break;
+            
+        case "check-state":
+            check();
+            break;
 
-let popperHovers = document.querySelectorAll(".popper-element");
+        case "corp":
+            corp();
+            break;
 
-function initPopper() {
-    popperHovers = document.querySelectorAll(".popper-element");
-
-    if (popper) {
-        let timeout;
-        popperHovers.forEach((e) => {
-            if (!e.classList.contains("popper-active")) {
-                e.addEventListener("mouseenter", () => {
-                    popper.style.visibility = "visible";
-                    const text = e.getAttribute("data-popper") || "Error :c";
-                    popperText.innerText = text;
-                });
-                e.addEventListener("mouseleave", () => {
-                    popper.style.visibility = "hidden";
-                });
-                e.addEventListener("touchstart", () => {
-                    clearTimeout(timeout);
-                    timeout = setTimeout(() => {
-                        popper.style.visibility = "hidden";
-                    }, 1000);
-                });
-                e.classList.add("popper-active");
-            }
-        });
+        default:
+            break;
     }
-}
-initPopper();
+
+    let data_hz = el.target.getAttribute('data-hz');
+    let data_performance = el.target.getAttribute('data-performance');
+    let data_res = el.target.getAttribute('data-res');
+    let data_fov = el.target.getAttribute('data-fov');
+    let data_font = el.target.getAttribute('data-font');
+    if (data_hz) {
+        data_hz = data_hz.split(',');
+        setHz(data_hz[0], data_hz[1])
+    } else if (data_performance) {
+        data_performance = data_performance.split(',');
+        performance(data_performance[0], data_performance[1])
+    } else if (data_res) {
+        data_res = data_res.split(',');
+        setRes(data_res[0], data_res[1])
+    } else if (data_fov) {
+        setFov(data_fov)
+    } else if (data_font) {
+        setFont(data_font)
+    }
+});
